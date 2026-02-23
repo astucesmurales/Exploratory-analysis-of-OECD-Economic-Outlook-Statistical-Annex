@@ -16,7 +16,7 @@ such as unemployment and employment growth.
 
 The data come from the OECD dataset *Inflation, Wages, Costs and Labour Market*,
 downloaded as an Excel workbook and cleaned using custom Python scripts.
-**
+*https://www.oecd.org/en/topics/sub-issues/economic-outlook/oecd-economic-outlook-statistical-annex.html*
 A link to access the data can also be sourced in *references.bib*.
 
 - Frequency: Annual
@@ -53,3 +53,4 @@ A link to access the data can also be sourced in *references.bib*.
 - Analysis is exploratory and descriptive; results do not imply causality
 - Sample size is limited by annual frequency and country coverage
 - Aggregation to global medians may mask country-specific dynamics
+
