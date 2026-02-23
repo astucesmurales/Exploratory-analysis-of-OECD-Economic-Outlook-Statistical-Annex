@@ -1,0 +1,172 @@
+---
+project: 
+  type: website
+
+website:
+  title: "Inflation, Wages, and Labour Markets"
+  navbar:
+    left:
+      - href: index.qmd
+        text: Home
+      - pages/a_data_cleaning.py
+      - pages/b_inflation.qmd
+      - pages/c_wages_ulc.qmd
+      - pages/d_labour_market.qmd
+      - pages/e_joint_patterns.qmd
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+---
+
+```{python}
+import pandas as pd
+from a_data_cleaning import load_all_data
+import statsmodels.api as sm
+import matplotlib.pyplot as plt
+import numpy as np
+```
+```{python}
+main_variables = load_all_data()
+```
+
+This section examines four key labour market indicators: employment growth, labour force growth, unemployment rate changes, and labour productivity growth. All variables are measured as annual percentage changes, allowing for consistent comparison across countries and over time.
+
+```{python}
+employment_df = main_variables["employment"]
+employment_year_cols = [col for col in employment_df.columns if type(col) == int]
+
+employment_long = employment_df.melt(
+    id_vars="Area",
+    value_vars = employment_year_cols,
+    var_name = "Year",
+    value_name = "Employment"
+)
+
+employment_long["Year"]=employment_long["Year"].astype(int)
+employment_long=employment_long.dropna()
+
+employment_long
+```
+```{python}
+unemployment_df = main_variables["unemployment_rate"]
+unemployment_year_cols = [col for col in unemployment_df.columns if type(col) == int]
+
+unemployment_long = unemployment_df.melt(
+    id_vars = "Area",
+    value_vars = unemployment_year_cols,
+    var_name = "Year",
+    value_name = "Unemployment Rate"
+)
+
+unemployment_long["Year"] = unemployment_long["Year"].astype(int)
+unemployment_long=unemployment_long.dropna()
+
+unemployment_long
+```
+```{python}
+labour_force_df = main_variables["labour_force"]
+labour_force_year_cols = [col for col in labour_force_df.columns if type(col) == int]
+
+labour_force_long = labour_force_df.melt(
+    id_vars = "Area",
+    value_vars = labour_force_year_cols,
+    var_name = "Year",
+    value_name = "Labour Force"
+)
+
+labour_force_long["Year"]=labour_force_long["Year"].astype(int)
+labour_force_long=labour_force_long.dropna()
+
+labour_force_long
+```
+```{python}
+labour_productivity_df = main_variables["labour_productivity"]
+labour_productivity_year_cols = [col for col in labour_productivity_df.columns if type(col) == int]
+
+labour_productivity_long = labour_productivity_df.melt(
+    id_vars = "Area",
+    value_vars = labour_productivity_year_cols,
+    var_name = "Year",
+    value_name = "Labour Productivity"
+)
+
+labour_productivity_long["Year"]=labour_productivity_long["Year"].astype(int)
+labour_productivity_long=labour_productivity_long.dropna()
+
+labour_productivity_long
+```
+
+As the mean is determined to not necessarily be the best measure of central tendancy due to high dispersion in prior pages, dispersion tests are run again to justify the usage of the median over the mean.
+
+```{python}
+dispersion = (
+    employment_long.groupby("Year")["Employment"].std()
+    .to_frame()
+    .join(unemployment_long.groupby("Year")["Unemployment Rate"].std())
+    .join(labour_force_long.groupby("Year")["Labour Force"].std())
+    .join(labour_productivity_long.groupby("Year")["Labour Productivity"].std())
+    .reset_index()
+)
+
+plt.figure(figsize = (10,6))
+
+plt.plot(dispersion["Year"], dispersion["Employment"], label = "Employment")
+plt.plot(dispersion["Year"], dispersion["Labour Force"], label = "Labour Force")
+plt.plot(dispersion["Year"], dispersion["Unemployment Rate"], label = "Unemployment Rate")
+plt.plot(dispersion["Year"], dispersion["Labour Productivity"], label = "Labour Productivity")
+
+plt.xlabel("Year")
+plt.ylabel("Cross-country standard deviation")
+plt.title("Dispersion of Labour Market Indicators Over Time")
+plt.legend()
+plt.grid(alpha=0.3)
+plt.show()
+```
+
+As seen by the dispersion plot, similar to the previous two pages, dispersion peaks during the very early 2020s. However, unlike other variables, dispersion appears to have peaked during 2020 rather than 2022-24. Although we cannot determine causality, it is entirely plausible that an event that occurred in 2020 initially caused instability across employment, the labour force, labour productivity, and the unemployment rate, which in turn caused inflation and wages to have greater dispersion down the line, similar to leading vs lagging indicators.
+
+This large dispersion across all variables justifies the usage of the median over the mean.
+
+```{python}
+summary = (
+    employment_long.groupby("Year")["Employment"].median()
+    .to_frame()
+    .join(unemployment_long.groupby("Year")["Unemployment Rate"].median())
+    .join(labour_force_long.groupby("Year")["Labour Force"].median())
+    .join(labour_productivity_long.groupby("Year")["Labour Productivity"].median())
+    .reset_index()
+)
+plt.figure(figsize = (10,6))
+
+plt.plot(summary["Year"], summary["Employment"], label = "Employment")
+plt.plot(summary["Year"], summary["Labour Force"], label = "Labour Force")
+plt.plot(summary["Year"], summary["Unemployment Rate"], label = "Unemployment Rate")
+plt.plot(summary["Year"], summary["Labour Productivity"], label = "Labour Productivity")
+
+plt.xlabel("Year")
+plt.ylabel("Annual % Change")
+plt.title("Global Labour Market Indicators (Median)")
+plt.legend()
+plt.grid(alpha=0.3)
+plt.show()
+```
+
+Using the median values, the time-series plot highlights distinct co-movement patterns across labour market indicators. Employment and labour force growth remain similar, reflecting their mechanical relationship, while unemployment rate changes generally move in the opposite direction. Labour productivity growth appears more volatile compared to employment, suggesting that productivity fluctuations are driven by factors beyond labour market conditions.
+
+```{python}
+corr_matrix = summary.drop(columns = "Year").corr()
+
+plt.figure(figsize = (6,5))
+plt.imshow(corr_matrix)
+plt.colorbar(label = "Correlation")
+plt.xticks(range(len(corr_matrix)), corr_matrix.columns, rotation=45)
+plt.yticks(range(len(corr_matrix)), corr_matrix.columns)
+plt.title("Correlation Between Labour Market Indicators (Median)")
+plt.show()
+
+corr_matrix
+```
+
+The correlation matrix confirms the visual patterns observed in the median time series, though these correlations should be interpreted as suggestive rather than statistically definitive, as they are derived from aggregated series rather than disaggregated data. Employment growth is strongly positively correlated with labour force growth and negatively correlated with changes in the unemployment rate, consistent with standard labour market theory. Labour productivity exhibits weaker correlations with the other indicators, indicating that productivity growth is not purely driven by labour quantity adjustments.

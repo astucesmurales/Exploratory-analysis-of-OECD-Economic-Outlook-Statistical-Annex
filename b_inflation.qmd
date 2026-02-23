@@ -1,0 +1,191 @@
+---
+project: 
+  type: website
+
+website:
+  title: "Inflation, Wages, and Labour Markets"
+  navbar:
+    left:
+      - href: index.qmd
+        text: Home
+      - pages/a_data_cleaning.py
+      - pages/b_inflation.qmd
+      - pages/c_wages_ulc.qmd
+      - pages/d_labour_market.qmd
+      - pages/e_joint_patterns.qmd
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+---
+
+This project explores the joint dynamics of inflation, wages, and labour markets across countries using exploratory data analysis. The aim is to identify broad patterns and co-movements rather than estimate causal relationships, both at an Australian and a global level.
+
+```{python}
+import pandas as pd
+from a_data_cleaning import load_all_data
+import statsmodels.api as sm
+import matplotlib.pyplot as plt
+import numpy as np
+```
+
+```{python}
+main_variables = load_all_data()
+```
+
+Consumer prices are reported as annual percentage changes, corresponding to year-on-year inflation rates.
+
+```{python}
+inflation_df = main_variables["consumer_prices"]
+
+year_cols = [col for col in inflation_df.columns if type(col) == int]
+
+inflation_long = inflation_df.melt(
+    id_vars = "Area",
+    value_vars = year_cols,
+    var_name = "Year",
+    value_name = "Inflation"
+)
+
+inflation_long["Year"] = inflation_long["Year"].astype(int)
+inflation_long = inflation_long.dropna()
+
+inflation_long.head()
+```
+
+Reshaping to long format allows each country-year pair to be treated as a single observation, which is necessary for regression and time-series analysis further along the exploratory analysis. 
+
+```{python}
+global_inflation = (inflation_long.groupby("Year", as_index = False)["Inflation"].mean())
+global_inflation_sorted = global_inflation.sort_values(
+    by = "Inflation",
+    ascending = False
+)
+
+global_inflation_sorted
+```
+
+The data clearly shows that consumer price changes were greatest in 2022 with inflation at 11.72% , followed by 9.63% in 2023, and 8.39% in 2024.
+
+With interest to how Australia specifically compares with the rest of the world, data was filtered to only include Australian data, and compared with global results.
+
+```{python}
+area = "Australia"
+aus_data = {}
+for name, df in main_variables.items():
+    aus_data[name] = df[df["Area"] == area].copy()
+
+long_data_aus = {}
+for name, df in aus_data.items():
+    
+    df = df.drop(columns=["Average"], errors = "ignore")
+    
+    df_long = df.melt(
+        id_vars = "Area",
+        var_name = "Year",
+        value_name = name   
+    )
+    
+    df_long["Year"] = df_long["Year"].astype(int)
+    
+    long_data_aus[name] = df_long
+
+years = global_inflation["Year"].values
+x = np.arange(len(years))
+width = 0.4
+
+plt.bar(
+    x - width/2,
+    global_inflation["Inflation"],
+    width,
+    label = "Global"
+)
+
+plt.bar(
+    x + width/2,
+    long_data_aus["consumer_prices"]["consumer_prices"],
+    width,
+    label = "Australia"
+)
+
+plt.xticks(x, years, rotation=90)
+plt.xlabel("Year")
+plt.ylabel("Annual % Change")
+plt.title("Global vs Australia % Changes in Consumer Prices")
+plt.legend()
+plt.show()
+```
+
+As seen in the generated chart, Australia demonstrates lower annual inflation rates during 2022–2024, a period that, across many countries, saw elevated levels of inflation. However, relying upon global mean inflation alone can be misleading, as under right-skewed distributions, the mean is pulled upward by outier countries with drastically greater levels of inflation.
+
+Dispersion in this case is measured as the cross-sectional standard deviation of inflation across countries. It captures the degree of heterogeneity in inflation levels within a given year. Plotting dispersion over time provides insight into whether inflationary pressures were broadly shared or unevenly distributed across countries, which can help to determine the presence of outliers that may drive up the mean.
+
+```{python}
+global_stats = (
+    inflation_long
+    .groupby("Year")["Inflation"]
+    .agg(["mean", "median", "std"])
+    .reset_index()
+)
+plt.plot(global_stats["Year"], global_stats["std"])
+plt.xlabel("Year")
+plt.ylabel("Cross-country std dev")
+plt.title("Inflation Dispersion Over Time")
+plt.show()
+```
+
+The dispersion plot indicates that inflation heterogeneity peaks during 2022–2024. This suggests that while average inflation was high during this period, countries experienced very different inflation increases. Therefore, the mean becomes less representative of “typical” country experience, and thus the median should provide a better point of comparison.
+
+```{python}
+global_inflation_median = (inflation_long.groupby("Year", as_index = False)["Inflation"].median() )
+
+years = global_inflation["Year"].values
+x = np.arange(len(years))
+width = 0.4
+
+plt.bar(
+    x - width/2,
+    global_inflation_median["Inflation"],
+    width,
+    label = "Global"
+)
+
+plt.bar(
+    x + width/2,
+    long_data_aus["consumer_prices"]["consumer_prices"],
+    width,
+    label = "Australia"
+)
+
+plt.xticks(x, years, rotation=90)
+plt.xlabel("Year")
+plt.ylabel("Annual % Change")
+plt.title("Global Median vs Australia % Changes in Consumer Prices")
+plt.legend()
+plt.show()
+```
+
+As seen in the generated graph, the global median %increase in inflation during 2022-24 is far lesser than the mean %increase, which is supported by the greater dispersion demonstrated in this time period. This determines that the median is indeed a better measure of central tendency than the mean, especially when comparing to Australia. It can be seen that Australia continues to have lower-than-average levels of %increases in consumer prices, suggesting reduced economic impact of whatever event caused the sharp increase in inflation during the early 2020s. 
+
+To find further proof of this dispersion heterogeneity across countries during the 2020s, a boxplot grouped by period will be generated to see distribution.
+
+```{python}
+inflation_long["Period"] = np.where(
+    inflation_long["Year"] < 2020,
+    "Pre-2020",
+    "2020+"
+)
+
+inflation_long.boxplot(
+    column = "Inflation",
+    by = "Period",
+    grid = False
+)
+
+plt.title("Inflation Distribution by Period")
+plt.ylabel("Annual % Change")
+plt.show()
+```
+
+As seen in the boxplot, there is more varied distribution in inflationary change post 2020, as seen in the larger 75th percentile and median, as well as outliers lying much further out. This supports the dispersion chart that was computed earlier, as seen in the extremely elevated levels of inclation for a small number of countries.

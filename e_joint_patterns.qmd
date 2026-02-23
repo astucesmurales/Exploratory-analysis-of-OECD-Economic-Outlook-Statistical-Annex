@@ -1,0 +1,153 @@
+---
+project: 
+  type: website
+
+website:
+  title: "Inflation, Wages, and Labour Markets"
+  navbar:
+    left:
+      - href: index.qmd
+        text: Home
+      - pages/a_data_cleaning.py
+      - pages/b_inflation.qmd
+      - pages/c_wages_ulc.qmd
+      - pages/d_labour_market.qmd
+      - pages/e_joint_patterns.qmd
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+---
+
+```{python}
+import pandas as pd
+from a_data_cleaning import load_all_data
+import statsmodels.api as sm
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
+```
+```{python}
+main_variables = load_all_data()
+```
+
+```{python}
+all_vars = {
+  "inflation": main_variables["consumer_prices"],
+  "employment": main_variables["employment"],
+  "unemployment": main_variables["unemployment_rate"],
+  "labour_force": main_variables["labour_force"],
+  "labour_productivity": main_variables["labour_productivity"],
+  "ulc": main_variables["unit_labour_costs"],
+  "wages": main_variables["compensation_per_employee"]
+}
+
+year_cols = [col for col in main_variables["consumer_prices"].columns if type(col) == int]
+
+joint_list = []
+
+for name, df in all_vars.items():
+  joint_long_df = df.melt(
+    id_vars = "Area",
+    value_vars = year_cols,
+    var_name = "Year",
+    value_name = name
+  )
+
+  joint_long_df["Year"] = joint_long_df["Year"].astype(int)
+  joint_long_df = joint_long_df.dropna()
+
+  joint_list.append(joint_long_df)
+
+joint_median_dfs = []
+
+for df in joint_list:
+  var_name = df.columns[-1]
+  joint_median_df = df.groupby("Year")[var_name].median().to_frame()
+  joint_median_dfs.append(joint_median_df)
+
+joint_median = joint_median_dfs[0]
+
+for df in joint_median_dfs[1:]:
+      joint_median = joint_median.join(df)
+
+joint_median
+```
+
+All variables that have been explored thus far are merged into a single long dataframe to allow for ease of multivariate anaysis.
+
+```{python}
+joint_median.corr()
+```
+```{python}
+sns.heatmap(joint_median.corr(), annot=True, cmap='coolwarm', fmt=".2f", linewidths=.5)
+```
+
+A correlation heatmap was generated to examine any joint-variable correlation. It is expected that some of the greatest correlation coefficients came from previous joint analysis, such as wages and ulc (0.70). Others make sense intuitively, such as a coefficient of 0.73 between inflation and wages, as it is expected that as wages grow, purchasing power grows, thus inflation rises as consumers spend more (standard macroeconomic theory), and -0.70 between unemployment and wages, as wages decrease with more unemployment, which also makes sense intuitively.  
+
+Some variables have, understandable, lower correlation coefficients, such as inflation and labour productivity (0.06), where an increase or decrease in one should not have an impact on the other due to the nature of what they measure.
+
+Some of the stronger correlation coefficients were tested using scatter plots to visualise this relationship, and inflation and ulc (0.62) and inflation and unemployment (-0.53) were selected. These were selected because their relationship is personally more difficult to explain using economic theory or textbook definitions than some of the stronger correlation coefficients, which make much more intuitive sense.
+
+```{python}
+plt.figure(figsize = (6,5))
+plt.scatter(
+    joint_median["inflation"],
+    joint_median["ulc"],
+    alpha = 0.7
+)
+plt.xlabel("Inflation (median %)")
+plt.ylabel("Unit Labour Costs (median %)")
+plt.title("Inflation vs Unit Labour Costs (Median, Global)")
+plt.grid(alpha = 0.3)
+plt.show()
+```
+
+The illustrative scatter plot of inflation against unit labour costs reveals a clear positive relationship at the global median level, especially at lower ulc and inflation levels.
+
+This could be due to increased inflation causing upward demand on wages as workers seek to maintain purchasing power, which in turn increases per unit labour costs.
+
+```{python}
+plt.figure(figsize = (6,5))
+plt.scatter(
+    joint_median["inflation"],
+    joint_median["unemployment"],
+    alpha = 0.7
+)
+plt.xlabel("Inflation (median %)")
+plt.ylabel("Unemployment Rate (median %)")
+plt.title("Inflation vs Unemployment Rate (Median, Global)")
+plt.grid(alpha = 0.3)
+plt.show()
+```
+
+In contrast, the relationship between inflation and unemployment appears considerably weaker as determined by the second illustrative scatter plot.
+
+To assess the relationship between inflation and labour market dynamics, a multiple regression model is estimated with inflation as the dependent variable and unit labour costs, unemployment, labour productivity, labour force growth, and employment growth as explanatory variables.
+
+```{python}
+X = joint_median[["ulc", "unemployment", "labour_productivity", "labour_force", "employment"]]
+X = sm.add_constant(X)
+y = joint_median["inflation"]
+
+model = sm.OLS(y, X).fit()
+
+model.summary()
+```
+
+The regression model explains approximately 76% of the variation in global median inflation, with an adjusted R-squared of 0.65 after accounting for model complexity.
+
+Unit labour costs exhibit a positive and statistically significant relationship with inflation. Unit labour costs remain significant even when controlling for broader labour market conditions, demonstrating their importance to labour indicators.
+
+Unemployment does not display a statistically significant relationship with inflation in the multivariate setting.
+
+This finding aligns with earlier descriptive evidence, where changes in unemployment exert limited direct influence on inflation outcomes.
+
+Labour productivity does not exhibit a statistically significant relationship with inflation in this specification. 
+
+Employment growth and labour force growth are not statistically significant once other labour market variables are included. The relatively high condition number suggests the presence of multicollinearity, indicating that these variables may share overlapping information rather than exerting independent effects.
+
+Taken together, the joint analysis reinforces the view that cost-based labour market pressures, particularly unit labour costs, are more closely associated with inflation dynamics than traditional quantity-based indicators such as unemployment or growth.
+
+While the analysis remains descriptive, it is limited by sample size. Despite this, the consistency of results across exploratory plots, correlations, and regression estimates strengthens the interpretation that labour cost growth plays a central role in shaping inflation outcomes.

@@ -1,0 +1,247 @@
+---
+project: 
+  type: website
+
+website:
+  title: "Inflation, Wages, and Labour Markets"
+  navbar:
+    left:
+      - href: index.qmd
+        text: Home
+      - pages/a_data_cleaning.py
+      - pages/b_inflation.qmd
+      - pages/c_wages_ulc.qmd
+      - pages/d_labour_market.qmd
+      - pages/e_joint_patterns.qmd
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+---
+
+```{python}
+import pandas as pd
+from a_data_cleaning import load_all_data
+import statsmodels.api as sm
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
+```
+```{python}
+main_variables = load_all_data()
+```
+
+Wages are reported as annual percentage changes in regards to compensation per employee.
+
+ULC is reported as annual percentage changes in regards to unit labour costs. 
+
+This page will analyse the both of them simultaneously as they reflect wage growth adjusted for labour productivity, linking worker compensation directly to cost pressures faced by firms.
+
+Wage growth reflects worker compensation, while unit labour costs capture the cost pressure faced by firms after accounting for productivity. As such, it is expected they will demonstrate some level of co-movement.
+
+```{python}
+global_wages_df = main_variables["compensation_per_employee"]
+wage_year_cols = [col for col in global_wages_df.columns if type(col) == int]
+
+global_wages_long = global_wages_df.melt(
+    id_vars = "Area",
+    value_vars = wage_year_cols,
+    var_name = "Year",
+    value_name = "Wages"
+)
+
+global_wages_long["Year"] = global_wages_long["Year"].astype(int)
+global_wages_long=global_wages_long.dropna()
+
+global_wages_long
+```
+```{python}
+global_ulc_df = main_variables["unit_labour_costs"]
+ulc_year_cols = [col for col in global_ulc_df.columns if type(col) == int]
+
+global_ulc_long = global_ulc_df.melt(
+    id_vars = "Area",
+    value_vars = ulc_year_cols,
+    var_name = "Year",
+    value_name = "Unit Labour Cost"
+)
+
+global_ulc_long["Year"] = global_ulc_long["Year"].astype(int)
+global_ulc_long = global_ulc_long.dropna()
+
+global_ulc_long
+```
+```{python}
+global_wages_long.groupby("Year", as_index = False)["Wages"].mean().sort_values(by = "Wages", ascending = False)
+```
+```{python}
+global_ulc_long.groupby("Year", as_index = False)["Unit Labour Cost"].mean().sort_values(by="Unit Labour Cost", ascending = False)
+```
+
+Much like in the previous page, data is stored into long data for regression later on. ULC and wage data is sorted globally at in a descending order.
+
+The years with the greatest ULC %increases were 2022-24, which is mirrored for wages (as well as inflation as ascertained from the previous page). This is demonstrative that, during this particular time period, ULC and wages moved together, supporting the expectation of co-movement.
+
+As such, this page will focus on co-movement, structure, and heterogeneity of wage growth and ulc, between Australia and the rest of the world. 
+
+Charts will be generated using global medians due to expected high levels of heterogeneity during the early 2020s, and to account for any outliers that may be present.
+
+```{python}
+area = "Australia"
+aus_data = {}
+for name, df in main_variables.items():
+    aus_data[name] = df[df["Area"] == area].copy()
+
+long_data_aus = {}
+for name, df in aus_data.items():
+    
+    df = df.drop(columns=["Average"], errors = "ignore")
+    
+    df_long = df.melt(
+        id_vars = "Area",
+        var_name = "Year",
+        value_name = name   
+    )
+    
+    df_long["Year"] = df_long["Year"].astype(int)
+    
+    long_data_aus[name] = df_long
+```
+```{python}
+years = long_data_aus["compensation_per_employee"]["Year"].values
+x = np.arange(len(years))
+width = 0.4
+
+plt.bar(
+    x - width/2,
+    global_wages_long.groupby("Year", as_index = False)["Wages"].median()["Wages"],
+    width,
+    label = "Global"
+)
+
+plt.bar(
+    x + width/2,
+    long_data_aus["compensation_per_employee"]["compensation_per_employee"],
+    width,
+    label = "Australia"
+)
+
+plt.xticks(x, years, rotation=90)
+plt.xlabel("Year")
+plt.ylabel("Annual % Change")
+plt.title("Global vs Australia % Changes in Compensation Per Employee")
+plt.legend()
+plt.show()
+```
+```{python}
+years = long_data_aus["compensation_per_employee"]["Year"].values
+x = np.arange(len(years))
+width = 0.4
+
+plt.bar(
+    x - width/2,
+    global_ulc_long.groupby("Year", as_index = False)["Unit Labour Cost"].median()["Unit Labour Cost"],
+    width,
+    label="Global"
+)
+
+plt.bar(
+    x + width/2,
+    long_data_aus["unit_labour_costs"]["unit_labour_costs"],
+    width,
+    label = "Australia"
+)
+
+plt.xticks(x, years, rotation=90)
+plt.xlabel("Year")
+plt.ylabel("Annual % Change")
+plt.title("Global vs Australia % Changes in Unit Labour Cost")
+plt.legend()
+plt.show()
+```
+
+As can be seen from the generated graphs, there was a drastic increase in wages from 2021 to 2022 followed by further increase from 2022 to 2023 for both Australia and the rest of the world. In contrast, there were similar increases in wages from 2021-22 and again in 2022-23. 
+
+To justify the use of the median over the mean, dispersion charts will be generated.
+
+```{python}
+plt.plot(global_ulc_long
+    .groupby("Year")["Unit Labour Cost"]
+    .agg(["mean", "median", "std"])
+    .reset_index()["Year"], global_ulc_long
+    .groupby("Year")["Unit Labour Cost"]
+    .agg(["mean", "median", "std"])
+    .reset_index()["std"])
+
+plt.xlabel("Year")
+plt.ylabel("Cross-country std dev")
+plt.title("ULC Dispersion Over Time")
+plt.show()
+```
+```{python}
+plt.plot(global_wages_long
+    .groupby("Year")["Wages"]
+    .agg(["mean", "median", "std"])
+    .reset_index()["Year"], global_wages_long
+    .groupby("Year")["Wages"]
+    .agg(["mean", "median", "std"])
+    .reset_index()["std"])
+
+plt.xlabel("Year")
+plt.ylabel("Cross-country std dev")
+plt.title("Wage Dispersion Over Time")
+plt.show()
+```
+
+The same large spikes can be seen here in the same time frame for both wages and ULC, demonstrating further co-movement in dispersion patterns, justifying the use of the median over the mean.
+
+```{python}
+merged_global = pd.merge(
+    global_wages_long,
+    global_ulc_long,
+    on = ["Area", "Year"],
+    how = "inner"
+)
+
+plt.scatter(
+    merged_global["Wages"],
+    merged_global["Unit Labour Cost"],
+    alpha = 0.4
+)
+plt.xlabel("Wage Growth (%)")
+plt.ylabel("Unit Labour Cost Growth (%)")
+plt.title("Wage Growth vs Unit Labour Cost Growth (Global)")
+plt.show()
+```
+
+The scatter plot shows a positive association between wage growth and unit labour cost growth, consistent with the definition of ULC as labour compensation adjusted for productivity. It also demonstrates a level of co-movement as the plot suggests that when wage grows, unit labour costs tend to grow as well in a moderately strong linear manner.
+
+```{python}
+corr_matrix = merged_global[["Wages", "Unit Labour Cost"]].corr()
+sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', fmt=".2f", linewidths=.5)
+```
+```{python}
+corr_matrix
+```
+
+It can be seen that there is a correlation coefficient of 0.66 between wages and unit labour cost, indicating a moderately strong positive linear relationship between the two variables.
+
+This intuitively makes sense given that as wages increase, the cost incurred by companies that pay their workers increases.
+
+```{python}
+X = merged_global["Wages"]
+y = merged_global["Unit Labour Cost"]
+
+X = sm.add_constant(X)
+
+model = sm.OLS(y, X).fit()
+model.summary()
+```
+
+A simple linear regression was constructed between wages and unit labour cost at a global scale. On setting wages as the regressor and unit labour costs as the dependent variable, it can be seen that for every increase of 1 in wages, ulc increases by 0.69. 
+
+This is consistent with earlier expecations surrounding the relationship between wages and unit labour costs, though the regression remains descriptive and does not imply causality.
+
+
+As such, it can be determined that the regression quantifies the moderate linear association already visible in the scatter plot, and supports expectations of a co-movement and a relationship between these two economic variables.
